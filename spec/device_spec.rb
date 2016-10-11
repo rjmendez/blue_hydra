@@ -4,7 +4,8 @@ require 'spec_helper'
 describe BlueHydra::Device do
   it "has useful attributes" do
     device = BlueHydra::Device.new
-
+# Adding 'location,lat,lon,time,speed,altitude' for GPSd logging --rjmendez
+# Revising to 'location'. <--lolnope --rjmendez
     %w{
       id
       name
@@ -40,6 +41,11 @@ describe BlueHydra::Device do
       created_at
       updated_at
       last_seen
+      lat
+      lon
+      time
+      speed
+      altitude
       uuid
     }.each do |attr|
       expect(device.respond_to?(attr)).to eq(true)

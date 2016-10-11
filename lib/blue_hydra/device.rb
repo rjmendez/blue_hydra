@@ -1,5 +1,10 @@
+  
+
 # this is the bluetooth Device model stored in the DB
 class BlueHydra::Device
+
+  #gpsd = GpsdClient::Gpsd.new()
+  #gpsd.start()
 
   attr_accessor :filthy_attributes
 
@@ -55,6 +60,13 @@ class BlueHydra::Device
   property :created_at,                    DateTime
   property :updated_at,                    DateTime
   property :last_seen,                     Integer
+# GPSd location --rjmendez
+  property :location,                      Text
+  property :lat,                           Float
+  property :lon,                           Float
+  property :time,                          String
+  property :speed,                         Float
+  property :altitude,                      Float
 
   # regex to validate macs
   MAC_REGEX    = /^((?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2})$/i
@@ -161,6 +173,26 @@ class BlueHydra::Device
     else
       record.last_seen = Time.now.to_i
     end
+    location = ""
+    gpsd = GpsdClient::Gpsd.new()
+    gpsd.start()
+#    location = gpsd.get_position
+#    record.location = gpsd.get_position
+      record.lat = "lat0.0"
+      record.lon = "lon0.0"
+      record.time = "time"
+      record.speed = "speed0.0"
+      record.altitude = "altitude0.0"
+
+    if gpsd.started?
+      location = gpsd.get_position
+      record.location = gpsd.get_position
+      record.lat = location[:lat]
+      record.lon = location[:lon]
+      record.time = location[:time]
+      record.speed = location[:speed]
+      record.altitude = location[:altitude]
+    end
 
     # update normal attributes
     %w{
@@ -250,13 +282,15 @@ class BlueHydra::Device
     self.all(uap_lap: uap_lap).first
   end
 
+# Adding ':location, :lat, :lon, :time, :speed, :altitude' for GPSd client. --rjmendez
+# Revising to just ':location' <--lolnope --rjmendez
   def syncable_attributes
     [
       :name, :vendor, :appearance, :company, :company_type, :lmp_version,
       :manufacturer, :le_features_bitmap, :firmware, :classic_mode,
       :classic_features_bitmap, :classic_major_class, :classic_minor_class,
       :le_mode, :le_address_type, :le_random_address_type, :le_tx_power,
-      :last_seen, :classic_tx_power, :le_features, :classic_features,
+      :last_seen, :lat, :lon, :time, :speed, :altitude, :classic_tx_power, :le_features, :classic_features,
       :le_service_uuids, :classic_service_uuids, :classic_channels,
       :classic_class, :classic_rssi, :le_flags, :le_rssi, :le_company_data,
       :le_company_uuid, :le_proximity_uuid, :le_major_num, :le_minor_num

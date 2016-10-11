@@ -1,5 +1,6 @@
 source 'http://rubygems.org'
 
+gem 'gpsd_client'
 gem 'dm-migrations'
 gem 'dm-sqlite-adapter'
 gem 'dm-timestamps'

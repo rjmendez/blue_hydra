@@ -1,10 +1,16 @@
 module BlueHydra
 
+
+
   # This class is a wrapper for all the core functionality of  Blue Hydra. It
   # is responsible for managing all the threads for device interaction, data
   # processing and, when not in daemon mode, the CLI UI trhead and tracker.
   class Runner
 
+  require "gpsd_client"
+  #gpsd = GpsdClient::Gpsd.new()
+  #gpsd.start()
+  #location = gpsd.get_position
     attr_accessor :command,
                   :raw_queue,
                   :chunk_queue,
