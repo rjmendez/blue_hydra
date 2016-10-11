@@ -174,24 +174,54 @@ class BlueHydra::Device
       record.last_seen = Time.now.to_i
     end
     location = ""
-    gpsd = GpsdClient::Gpsd.new()
-    gpsd.start()
+    $gpsd = GpsdClient::Gpsd.new()
+#    $gpsd.start()
 #    location = gpsd.get_position
 #    record.location = gpsd.get_position
-      record.lat = "lat0.0"
-      record.lon = "lon0.0"
+      record.lat = 0.0
+      record.lon = 0.0
       record.time = "time"
-      record.speed = "speed0.0"
-      record.altitude = "altitude0.0"
+      record.speed = 0.0
+      record.altitude = 0.0
 
-    if gpsd.started?
-      location = gpsd.get_position
-      record.location = gpsd.get_position
-      record.lat = location[:lat]
-      record.lon = location[:lon]
-      record.time = location[:time]
-      record.speed = location[:speed]
-      record.altitude = location[:altitude]
+    if $gpsd.started?
+      if location.nil?
+       record.location = ""
+      else
+       record.location = $gpsd.get_position
+      end
+      location = $gpsd.get_position
+#     record.location = $gpsd.get_position
+      if location[:lat].nil?
+       record.lat = 0.0
+      else
+       record.lat = location[:lat]
+      end
+#     record.lat = location[:lat] unless location[:lat].nil?
+      if location[:lon].nil?
+       record.lon = 0.0
+      else
+       record.lon = location[:lon]
+      end
+#     record.lon = location[:lon] unless location[:lon].nil?
+      if location[:time].nil?
+       record.time = ""
+      else
+       record.time = location[:time]
+      end
+#     record.time = location[:time] unless location[:time].nil?
+      if location[:speed].nil?
+       record.speed = 0.0
+      else
+       record.speed = location[:speed]
+      end
+#     record.speed = location[:speed] unless location[:speed].nil?
+      if location[:altitude].nil?
+       record.altitude = 0.0
+      else
+       record.altitude = location[:altitude]
+      end
+#     record.altitude = location[:altitude] unless location[:altitude].nil?
     end
 
     # update normal attributes

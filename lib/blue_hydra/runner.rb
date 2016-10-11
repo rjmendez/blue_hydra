@@ -8,6 +8,8 @@ module BlueHydra
   class Runner
 
   require "gpsd_client"
+  $gpsd = GpsdClient::Gpsd.new()
+  $gpsd.start()
   #gpsd = GpsdClient::Gpsd.new()
   #gpsd.start()
   #location = gpsd.get_position
