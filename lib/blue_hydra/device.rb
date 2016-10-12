@@ -175,7 +175,7 @@ class BlueHydra::Device
     end
     location = ""
     $gpsd = GpsdClient::Gpsd.new()
-#    $gpsd.start()
+    $gpsd.start()
 #    location = gpsd.get_position
 #    record.location = gpsd.get_position
       record.lat = 0.0
@@ -184,7 +184,6 @@ class BlueHydra::Device
       record.speed = 0.0
       record.altitude = 0.0
 
-    if $gpsd.started?
       if location.nil?
        record.location = ""
       else
@@ -222,7 +221,6 @@ class BlueHydra::Device
        record.altitude = location[:altitude]
       end
 #     record.altitude = location[:altitude] unless location[:altitude].nil?
-    end
 
     # update normal attributes
     %w{
