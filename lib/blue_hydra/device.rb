@@ -62,6 +62,7 @@ class BlueHydra::Device
   property :last_seen,                     Integer
 # GPSd location --rjmendez
   property :location,                      Text
+  property :gpslocation,                   Text
   property :lat,                           Float
   property :lon,                           Float
   property :time,                          String
@@ -136,6 +137,8 @@ class BlueHydra::Device
   # == Parameters :
   #   result ::
   #     Hash of results from parser
+  $gpsd = GpsdClient::Gpsd.new()
+  $gpsd.start()
   def self.update_or_create_from_result(result)
 
     result = result.dup
@@ -173,9 +176,15 @@ class BlueHydra::Device
     else
       record.last_seen = Time.now.to_i
     end
-    location = ""
-    $gpsd = GpsdClient::Gpsd.new()
-    $gpsd.start()
+#    location = ""
+    location = Hash.new
+      location["lat"] = 0.0
+      location["lon"] = 0.0
+      location["time"] = "time"
+      location["speed"] = 0.0
+      location["altitude"] = 0.0
+#    $gpsd = GpsdClient::Gpsd.new()
+#    $gpsd.start()
 #    location = gpsd.get_position
 #    record.location = gpsd.get_position
       record.lat = 0.0
@@ -184,12 +193,21 @@ class BlueHydra::Device
       record.speed = 0.0
       record.altitude = 0.0
 
-      if location.nil?
-       record.location = ""
-      else
-       record.location = $gpsd.get_position
-      end
-      location = $gpsd.get_position
+      gpslocation = Hash.new
+        gpslocation["lat"] = 0.0
+        gpslocation["lon"] = 0.0
+        gpslocation["time"] = "time"
+        gpslocation["speed"] = 0.0
+        gpslocation["altitude"] = 0.0
+      gpslocation = $gpsd.get_position
+      record.gpslocation = $gpsd.get_position
+#      if gpslocation.nil?
+#       record.location = ""
+#      else
+       location = gpslocation
+       record.location = gpslocation
+#      end
+#      location = $gpsd.get_position
 #     record.location = $gpsd.get_position
       if location[:lat].nil?
        record.lat = 0.0
@@ -318,7 +336,7 @@ class BlueHydra::Device
       :manufacturer, :le_features_bitmap, :firmware, :classic_mode,
       :classic_features_bitmap, :classic_major_class, :classic_minor_class,
       :le_mode, :le_address_type, :le_random_address_type, :le_tx_power,
-      :last_seen, :lat, :lon, :time, :speed, :altitude, :classic_tx_power, :le_features, :classic_features,
+      :last_seen, :gpslocation, :lat, :lon, :time, :speed, :altitude, :classic_tx_power, :le_features, :classic_features,
       :le_service_uuids, :classic_service_uuids, :classic_channels,
       :classic_class, :classic_rssi, :le_flags, :le_rssi, :le_company_data,
       :le_company_uuid, :le_proximity_uuid, :le_major_num, :le_minor_num
