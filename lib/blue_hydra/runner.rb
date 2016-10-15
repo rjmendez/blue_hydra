@@ -7,12 +7,6 @@ module BlueHydra
   # processing and, when not in daemon mode, the CLI UI trhead and tracker.
   class Runner
 
-  require "gpsd_client"
-  $gpsd = GpsdClient::Gpsd.new()
-  $gpsd.start()
-  #gpsd = GpsdClient::Gpsd.new()
-  #gpsd.start()
-  #location = gpsd.get_position
     attr_accessor :command,
                   :raw_queue,
                   :chunk_queue,
@@ -20,6 +14,7 @@ module BlueHydra
                   :btmon_thread,
                   :discovery_thread,
                   :ubertooth_thread,
+                  :gpsd_thread,
                   :chunker_thread,
                   :parser_thread,
                   :cui_status,
@@ -106,6 +101,9 @@ module BlueHydra
         # if reading from a file since btmon will just be getting replayed
         start_discovery_thread unless BlueHydra.config["file"]
 
+        # start gpsd thread
+        start_gpsd_thread unless BlueHydra.config["file"]
+
         # start the thread responsibly for breaking the filtered btmon output
         # into chunks by device, basically a pre-parser
         start_chunker_thread
@@ -190,6 +188,7 @@ module BlueHydra
       unless BlueHydra.config["file"]
         x[:discovery_thread] = self.discovery_thread.status
         x[:ubertooth_thread] = self.ubertooth_thread.status if self.ubertooth_thread
+        x[:gpsd_thread] = self.gpsd_thread.status
       end
 
       x[:cui_thread] = self.cui_thread.status unless BlueHydra.daemon_mode
@@ -206,6 +205,7 @@ module BlueHydra
       unless BlueHydra.config["file"]
         self.discovery_thread.kill if self.discovery_thread
         self.ubertooth_thread.kill if self.ubertooth_thread
+        self.gpsd_thread.kill if self.gpsd_thread
       end
       self.btmon_thread.kill if self.btmon_thread # stop this first thread so data stops flowing ...
 
@@ -506,6 +506,24 @@ module BlueHydra
           e.backtrace.each do |x|
             BlueHydra.logger.error("#{x}")
           end
+        end
+      end
+    end
+
+    def start_gpsd_thread
+      BlueHydra.logger.info("gpsd thread starting")
+      self.gpsd_thread = Thread.new do
+        begin
+          require "gpsd_client"
+          gpsd = GpsdClient::Gpsd.new()
+          gpsd.start()
+          loop do
+            begin
+              #
+              $gpslocation = gpsd.get_position
+            end
+          end
+          gpsd.stop()
         end
       end
     end
