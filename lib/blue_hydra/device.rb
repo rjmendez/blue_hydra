@@ -178,39 +178,50 @@ class BlueHydra::Device
       location["time"] = "time"
       location["speed"] = 0.0
       location["altitude"] = 0.0
+
+      lat = 0.0
+      lon = 0.0
+      time = "time"
+      speed = 0.0
+      altitude = 0.0
       record.lat = 0.0
       record.lon = 0.0
       record.time = "time"
       record.speed = 0.0
       record.altitude = 0.0
     # Pull the value from gpsd_thread
-    location = $gpslocation
-    record.location = $gpslocation
+      location ||= $gpslocation
+      record.location ||= $gpslocation
       # Break down hash into their individual values
-      # Make sure we dont record any nil values if we lose the gps lock or gpsd fails.
+      # Make sure we don't record any nil values if we lose the gps lock or gpsd fails.
       if location[:lat].nil?
        record.lat = 0.0
       else
+       lat = location[:lat]
        record.lat = location[:lat]
       end
       if location[:lon].nil?
        record.lon = 0.0
       else
+       lon = location[:lon]
        record.lon = location[:lon]
       end
       if location[:time].nil?
-       record.time = ""
+       record.time = "No GPS Lock"
       else
+       time = location[:time]
        record.time = location[:time]
       end
       if location[:speed].nil?
        record.speed = 0.0
       else
+       speed = location[:speed]
        record.speed = location[:speed]
       end
       if location[:altitude].nil?
        record.altitude = 0.0
       else
+       altitude = location[:altitude]
        record.altitude = location[:altitude]
       end
 
