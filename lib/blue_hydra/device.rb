@@ -194,39 +194,46 @@ class BlueHydra::Device
       record.location ||= $gpslocation
       # Break down hash into their individual values
       # Make sure we don't record any nil values if we lose the gps lock or gpsd fails.
-#      BlueHydra.logger.info("GPS DEBUG1: #{lat} #{lon} #{time} #{speed} #{altitude}")
+      BlueHydra.logger.info("GPS DEBUG1: #{lat} #{lon} #{time} #{speed} #{altitude}")
 #      BlueHydra.logger.info("GPS DEBUG2: #{location[:lat]} #{location[:lon]} #{location[:time]} #{location[:speed]} #{location[:altitude]}")
-      if $gpslocation[:lat].nil?
-       record.lat = 0.0
+      if defined? $gpslocation
+
+        if $gpslocation[:lat].nil?
+         record.lat = 0.0
+        else
+         lat ||= $gpslocation[:lat]
+         record.lat ||= $gpslocation[:lat]
+        end
+        if $gpslocation[:lon].nil?
+         record.lon = 0.0
+        else
+         lon ||= $gpslocation[:lon]
+         record.lon ||= $gpslocation[:lon]
+        end
+        if $gpslocation[:time].nil?
+         record.time = "No GPS Lock"
+        else
+         time ||= $gpslocation[:time]
+         record.time ||= $gpslocation[:time]
+        end
+        if $gpslocation[:speed].nil?
+         record.speed = 0.0
+        else
+         speed ||= $gpslocation[:speed]
+         record.speed ||= $gpslocation[:speed]
+        end
+        if $gpslocation[:altitude].nil?
+         record.altitude = 0.0
+        else
+         altitude ||= $gpslocation[:altitude]
+         record.altitude ||= $gpslocation[:altitude]
+        end
       else
-       lat ||= $gpslocation[:lat]
-       record.lat ||= $gpslocation[:lat]
+      BlueHydra.logger.info("No GPS Lock")
+      # Do nothing
       end
-      if $gpslocation[:lon].nil?
-       record.lon = 0.0
-      else
-       lon ||= $gpslocation[:lon]
-       record.lon ||= $gpslocation[:lon]
-      end
-      if $gpslocation[:time].nil?
-       record.time = "No GPS Lock"
-      else
-       time ||= $gpslocation[:time]
-       record.time ||= $gpslocation[:time]
-      end
-      if $gpslocation[:speed].nil?
-       record.speed = 0.0
-      else
-       speed ||= $gpslocation[:speed]
-       record.speed ||= $gpslocation[:speed]
-      end
-      if $gpslocation[:altitude].nil?
-       record.altitude = 0.0
-      else
-       altitude ||= $gpslocation[:altitude]
-       record.altitude ||= $gpslocation[:altitude]
-      end
-#      BlueHydra.logger.info("GPS DEBUG3: #{lat} #{lon} #{time} #{speed} #{altitude}")
+
+      BlueHydra.logger.info("GPS DEBUG3: #{lat} #{lon} #{time} #{speed} #{altitude}")
 #      BlueHydra.logger.info("GPS DEBUG4: #{location[:lat]} #{location[:lon]} #{location[:time]} #{location[:speed]} #{location[:altitude]}")
 
     # update normal attributes
