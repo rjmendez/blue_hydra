@@ -521,6 +521,7 @@ module BlueHydra
             begin
               #
               $gpslocation = gpsd.get_position
+            # BlueHydra.logger.info("GPS DEBUG: #{$gpslocation}")
             end
           end
           gpsd.stop()
