@@ -194,8 +194,8 @@ class BlueHydra::Device
       record.location ||= $gpslocation
       # Break down hash into their individual values
       # Make sure we don't record any nil values if we lose the gps lock or gpsd fails.
-      BlueHydra.logger.info("GPS DEBUG1: #{lat} #{lon} #{time} #{speed} #{altitude}")
-#      BlueHydra.logger.info("GPS DEBUG2: #{location[:lat]} #{location[:lon]} #{location[:time]} #{location[:speed]} #{location[:altitude]}")
+      #BlueHydra.logger.info("GPS DEBUG1: #{lat} #{lon} #{time} #{speed} #{altitude}")
+      #BlueHydra.logger.info("GPS DEBUG2: #{location[:lat]} #{location[:lon]} #{location[:time]} #{location[:speed]} #{location[:altitude]}")
       if defined? $gpslocation
 
         if $gpslocation[:lat].nil?
@@ -233,7 +233,7 @@ class BlueHydra::Device
       # Do nothing
       end
 
-      BlueHydra.logger.info("GPS DEBUG3: #{lat} #{lon} #{time} #{speed} #{altitude}")
+      #BlueHydra.logger.info("GPS DEBUG3: #{lat} #{lon} #{time} #{speed} #{altitude}")
 #      BlueHydra.logger.info("GPS DEBUG4: #{location[:lat]} #{location[:lon]} #{location[:time]} #{location[:speed]} #{location[:altitude]}")
 
     # update normal attributes
