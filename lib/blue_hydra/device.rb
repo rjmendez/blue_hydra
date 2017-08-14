@@ -88,14 +88,6 @@ class BlueHydra::Device
     end
   end
 
-  # sync device status to pulse rather than full attribute set
-  def self.sync_statuses_to_pulse
-    BlueHydra::Device.all.each do |dev|
-      dev.instance_variable_set(:@filthy_attributes, [:status])
-      dev.sync_to_pulse(false)
-    end
-  end
-
   # mark hosts as 'offline' if we haven't seen for a while
   def self.mark_old_devices_offline
     # classic mode devices have 15 min timeout
@@ -248,7 +240,7 @@ class BlueHydra::Device
         # we should only get a single value for these so we need to warn if
         # we are getting multiple values for these keys.. it should NOT be...
         if result[attr].uniq.count > 1
-          BlueHydra.logger.warn(
+          BlueHydra.logger.debug(
             "#{address} multiple values detected for #{attr}: #{result[attr].inspect}. Using first value..."
           )
         end
@@ -486,7 +478,19 @@ class BlueHydra::Device
   #     new uuids
   def le_service_uuids=(new_uuids)
     current = JSON.parse(self.le_service_uuids || '[]')
-    new = (new_uuids + current)
+
+    #first we fix our old data if needed
+    current_fixed = current.map do |x|
+      if x.split(':')[1]
+        #example x "(UUID 0xfe9f): 0000000000000000000000000000000000000000"
+        # this split/scan handles removing the service data we used to capture and normalizing it to just show uuid
+        x.split(':')[0].scan(/\(([^)]+)\)/).flatten[0].split('UUID ')[1]
+      else
+        x
+      end
+    end
+
+    new = (new_uuids + current_fixed)
 
     new.map! do |uuid|
       if uuid =~ /\(/

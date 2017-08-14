@@ -4,7 +4,7 @@ module BlueHydra
 
   # This class is a wrapper for all the core functionality of  Blue Hydra. It
   # is responsible for managing all the threads for device interaction, data
-  # processing and, when not in daemon mode, the CLI UI trhead and tracker.
+  # processing and, when not in daemon mode, the CLI UI thread and tracker.
   class Runner
 
     attr_accessor :command,
@@ -57,7 +57,6 @@ module BlueHydra
         if BlueHydra::Device.count == 0
           # if we have no devices, tell pulse we are starting clean
           BlueHydra.logger.info("No devices found in DB, starting clean.")
-          BlueHydra::Pulse.reset
         else
           #If we have devices, make sure to clean up their states and sync it all
 
@@ -72,6 +71,7 @@ module BlueHydra
           BlueHydra.logger.info("Syncing all hosts to Pulse...") if BlueHydra.pulse
           BlueHydra::Device.sync_all_to_pulse
         end
+        BlueHydra::Pulse.reset
 
         # Query History is used to track what addresses have been pinged
         self.query_history   = {}
@@ -165,6 +165,12 @@ module BlueHydra
         e.backtrace.each do |x|
           BlueHydra.logger.error("#{x}")
         end
+        BlueHydra::Pulse.send_event('blue_hydra',
+        {key:'blue_hydra_master_thread_error',
+        title:'Blue Hydras Master Thread Encountered An Error',
+        message:"Runner master thread: #{e.message}",
+        severity:'ERROR'
+        })
       end
     end
 
@@ -225,7 +231,7 @@ module BlueHydra
         end
       end
 
-      if OPTIONS[:no_db]
+      if BlueHydra.no_db
         # when we know we are storing no database it makes no sense to leave the devices online
         # tell pulse in advance that we are clearing this database so things do not get confused
         # when bringing an older database back online
@@ -262,11 +268,23 @@ module BlueHydra
           )
         rescue BtmonExitedError
           BlueHydra.logger.error("Btmon thread exiting...")
+          BlueHydra::Pulse.send_event('blue_hydra',
+            {key:'blue_hydra_btmon_exited',
+          title:'Blue Hydras Btmon Thread Exited',
+          message:"Btmon Thread exited...",
+          severity:'ERROR'
+          })
         rescue => e
           BlueHydra.logger.error("Btmon thread #{e.message}")
           e.backtrace.each do |x|
             BlueHydra.logger.error("#{x}")
           end
+          BlueHydra::Pulse.send_event('blue_hydra',
+          {key:'blue_hydra_btmon_thread_error',
+          title:'Blue Hydras BTmon Thread Encountered An Error',
+          message:"Btmon thread #{e.message}",
+          severity:'ERROR'
+          })
         end
       end
     end
@@ -276,15 +294,16 @@ module BlueHydra
       # interface reset
       interface_reset = BlueHydra::Command.execute3("hciconfig #{BlueHydra.config["bt_device"]} reset")[:stderr]
       if interface_reset
-        BlueHydra.logger.error("Error with hciconfig #{BlueHydra.config["bt_device"]} reset..")
-        interface_reset.split("\n").each do |ln|
-          BlueHydra.logger.error(ln)
-        end
         if interface_reset =~ /Connection timed out/i || interface_reset =~ /Operation not possible due to RF-kill/i
           ## TODO: check error number not description
           ## TODO: check for interface name "Can't init device hci0: Connection timed out (110)"
           ## TODO: check for interface name "Can't init device hci0: Operation not possible due to RF-kill (132)"
           raise BluezNotReadyError
+        else
+          BlueHydra.logger.error("Error with hciconfig #{BlueHydra.config["bt_device"]} reset..")
+          interface_reset.split("\n").each do |ln|
+            BlueHydra.logger.error(ln)
+          end
         end
       end
     end
@@ -407,10 +426,6 @@ module BlueHydra
               self.scanner_status[:test_discovery] = Time.now.to_i unless BlueHydra.daemon_mode
               discovery_errors = BlueHydra::Command.execute3(discovery_command,45)[:stderr]
               if discovery_errors
-                BlueHydra.logger.error("Error with test-discovery script..")
-                discovery_errors.split("\n").each do |ln|
-                  BlueHydra.logger.error(ln)
-                end
                 if discovery_errors =~ /org.bluez.Error.NotReady/
                   raise BluezNotReadyError
                 elsif discovery_errors =~ /dbus.exceptions.DBusException/i
@@ -426,6 +441,11 @@ module BlueHydra
                   # Sometimes the interrupt gets passed to test-discovery so assume it was meant for us
                   BlueHydra.logger.info("BlueHydra Killed! Exiting... SIGINT")
                   exit
+                else
+                  BlueHydra.logger.error("Error with test-discovery script..")
+                  discovery_errors.split("\n").each do |ln|
+                    BlueHydra.logger.error(ln)
+                  end
                 end
               end
 
@@ -433,7 +453,9 @@ module BlueHydra
               bluetoothd_errors = 0
 
             rescue BluetoothdDbusError
+              BlueHydra.logger.info("Bluetoothd errors, attempting to recover...")
               bluetoothd_errors += 1
+              begin
               if bluetoothd_errors == 1
                 # Is bluetoothd running?
                 bluetoothd_pid = `pgrep bluetoothd`.chomp
@@ -448,7 +470,13 @@ module BlueHydra
                       self.cui_thread.kill if self.cui_thread
                       puts "Bluetoothd is running but not controlled by init or functioning, please restart it manually."
                     end
-                    BlueHydra.logger.error("Bluetoothd is running but not controlled by init or functioning, please restart it manually.")
+                    BlueHydra.logger.fatal("Bluetoothd is running but not controlled by init or functioning, please restart it manually.")
+                    BlueHydra::Pulse.send_event('blue_hydra',
+                    {key:'blue_hydra_bluetoothd_error',
+                    title:'Blue Hydra Encounterd Unrecoverable bluetoothd Error',
+                    message:"bluetoothd is running but not controlled by init or functioning",
+                    severity:'FATAL'
+                    })
                     exit 1
                   end
                 else
@@ -460,6 +488,16 @@ module BlueHydra
                   bluetoothd_errors += 1
                 end
               end
+              rescue Errno::ENOMEM, NoMemoryError
+                BlueHydra::Pulse.send_event('blue_hydra',
+                 {
+                  key: "bluehydra_oom",
+                  title: "BlueHydra couldnt allocate enough memory to run external command. Sensor OOM.",
+                  message: "BlueHydra couldnt allocate enough memory to run external command. Sensor OOM.",
+                  severity: "FATAL"
+                 })
+                exit 1
+              end
               if bluetoothd_errors > 1
                 unless BlueHydra.daemon_mode
                   self.cui_thread.kill if self.cui_thread
@@ -468,11 +506,24 @@ module BlueHydra
                 end
                 if bluetoothd_restart[:stderr]
                   BlueHydra.logger.error("Failed to restart bluetoothd: #{bluetoothd_restart[:stderr]}")
+                  BlueHydra::Pulse.send_event('blue_hydra',
+                  {key:'blue_hydra_bluetoothd_restart_failed',
+                  title:'Blue Hydra Failed To Restart bluetoothd',
+                  message:"Failed to restart bluetoothd: #{bluetoothd_restart[:stderr]}",
+                  severity:'ERROR'
+                  })
                 end
-                BlueHydra.logger.error("Bluetoothd is not functioning as expected")
+                BlueHydra.logger.fatal("Bluetoothd is not functioning as expected and we failed to automatically recover.")
+                BlueHydra::Pulse.send_event('blue_hydra',
+                {key:'blue_hydra_bluetoothd_jank',
+                title:'Blue Hydra Unable To Recover From Bluetoothd Error',
+                message:"Bluetoothd is not functioning as expected and we failed to automatically recover.",
+                severity:'FATAL'
+                })
                 exit 1
               end
             rescue BluezNotReadyError
+              BlueHydra.logger.info("Bluez reports not ready, attempting to recover...")
               bluez_errors += 1
               if bluez_errors == 1
                 BlueHydra.logger.error("Bluez reported #{BlueHydra.config["bt_device"]} not ready, attempting to reset with rfkill")
@@ -488,7 +539,13 @@ module BlueHydra
                   puts "Bluez reported #{BlueHydra.config["bt_device"]} not ready and failed to auto-reset with rfkill"
                   puts "Try removing and replugging the card, or toggling rfkill on and off"
                 end
-                BlueHydra.logger.error("Bluez reported #{BlueHydra.config["bt_device"]} not ready and failed to reset with rfkill")
+                BlueHydra.logger.fatal("Bluez reported #{BlueHydra.config["bt_device"]} not ready and failed to reset with rfkill")
+                BlueHydra::Pulse.send_event('blue_hydra',
+                {key:'blue_hydra_bluez_error',
+                title:'Blue Hydra Encountered Bluez Error',
+                message:"Bluez reported #{BlueHydra.config["bt_device"]} not ready and failed to reset with rfkill",
+                severity:'FATAL'
+                })
                 exit 1
               end
             rescue => e
@@ -496,6 +553,12 @@ module BlueHydra
               e.backtrace.each do |x|
                 BlueHydra.logger.error("#{x}")
               end
+              BlueHydra::Pulse.send_event('blue_hydra',
+              {key:'blue_hydra_discovery_loop_error',
+              title:'Blue Hydras Discovery Loop Encountered An Error',
+              message:"Discovery loop crashed: #{e.message}",
+              severity:'ERROR'
+              })
               BlueHydra.logger.error("Sleeping 20s...")
               sleep 20
             end
@@ -506,6 +569,12 @@ module BlueHydra
           e.backtrace.each do |x|
             BlueHydra.logger.error("#{x}")
           end
+          BlueHydra::Pulse.send_event('blue_hydra',
+          {key:'blue_hydra_discovery_thread_error',
+          title:'Blue Hydras Discovery Thread Encountered An Error',
+          message:"Discovery thread error: #{e.message}",
+          severity:'ERROR'
+          })
         end
       end
     end
@@ -634,6 +703,12 @@ module BlueHydra
               BlueHydra.logger.error("#{x}")
             end
             BlueHydra.logger.warn("Restarting Chunker...")
+            BlueHydra::Pulse.send_event('blue_hydra',
+            {key:'blue_hydra_chunker_error',
+            title:'Blue Hydras Chunker Thread Encountered An Error',
+            message:"Chunker thread error: #{e.message}",
+            severity:'ERROR'
+            })
           end
           sleep 1
         end
@@ -761,6 +836,12 @@ module BlueHydra
           e.backtrace.each do |x|
             BlueHydra.logger.error("#{x}")
           end
+          BlueHydra::Pulse.send_event('blue_hydra',
+          {key:'blue_hydra_parser_thread_error',
+          title:'Blue Hydras Parser Thread Encountered An Error',
+          message:"Parser thread error: #{e.message}",
+          severity:'ERROR'
+          })
         end
       end
     end
@@ -774,8 +855,6 @@ module BlueHydra
           maxdepth = 0
 
           last_sync = Time.now
-
-          last_status_sync = Time.now.to_i
 
           loop do
             # 1 day in seconds == 24 * 60 * 60 == 86400
@@ -842,12 +921,6 @@ module BlueHydra
 
             BlueHydra::Device.mark_old_devices_offline
 
-            if (Time.now.to_i - BlueHydra.config["status_sync_rate"]) > last_status_sync && BlueHydra.pulse
-              BlueHydra.logger.info("Syncing all host statuses to Pulse...")
-              BlueHydra::Device.sync_statuses_to_pulse
-              last_status_sync = Time.now.to_i
-            end
-
             sleep 1
           end
 
@@ -856,6 +929,12 @@ module BlueHydra
           e.backtrace.each do |x|
             BlueHydra.logger.error("#{x}")
           end
+          BlueHydra::Pulse.send_event('blue_hydra',
+          {key:'blue_hydra_result_thread_error',
+          title:'Blue Hydras Result Thread Encountered An Error',
+          message:"Result thread #{e.message}",
+          severity:'ERROR'
+          })
         end
       end
 

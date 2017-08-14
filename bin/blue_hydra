@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 # encoding: UTF-8
+$0 = "BlueHydra"
 
 # add ../lib/ to load path 
 $:.unshift(File.dirname(File.expand_path('../../lib/blue_hydra.rb',__FILE__)))
@@ -33,35 +34,55 @@ OptionParser.new do |opts|
     exit
   end
 end.parse!
-OPTIONS = options.freeze
+
+unless Process.uid == 0
+  puts "BlueHydra must be run as root to function"
+  exit 1
+end
+
 
 # require the actual Blue Hydra code from lib
 require 'blue_hydra'
 
 # Daemon mode will run the service in the background with no CLI output
-if OPTIONS[:daemonize]
+if options[:daemonize]
   BlueHydra.daemon_mode = true
+else
+  BlueHydra.daemon_mode = false
 end
 
 # Demo mode will disguise macs detected for demo purposes, only affects CLI
 # output, not what is stored in DB
-if OPTIONS[:demo]
+if options[:demo]
   BlueHydra.demo_mode = true
+else
+  BlueHydra.demo_mode = false
 end
 
 # If the pulse flag is set the service will attempt to send results to
 # PwnPulse.  This defaults to false and can be ignored unless the system
 # running Blue Hydra is a Pwnie Express sensor.
-if OPTIONS[:pulse]
+if options[:pulse]
   BlueHydra.pulse = true
 else
   BlueHydra.pulse = false
 end
 
-if OPTIONS[:pulse_debug]
+if options[:pulse_debug]
   BlueHydra.pulse_debug = true
 else
   BlueHydra.pulse_debug = false
+end
+
+if options[:no_db]
+  BlueHydra.no_db = true
+else
+  BlueHydra.no_db = false
+end
+
+if BlueHydra.pulse
+  $LOAD_PATH << '/opt/pwnix/lib'
+  require 'sensor_event'
 end
 
 # This file is used by the service scan to kill the process and should be
@@ -75,6 +96,11 @@ File.write(PID_FILE, Process.pid)
 done = false
 trap('SIGINT') do
   done = true
+end
+
+got_sighup = false
+trap('SIGHUP') do
+  got_sighup = true
 end
 
 begin
@@ -91,6 +117,12 @@ begin
       BlueHydra.logger.info("BlueHydra Killed! Exiting... SIGINT")
       exit_status = 0
       break
+    end
+
+    if got_sighup
+      BlueHydra.initialize_logger
+      BlueHydra.update_logger
+      got_sighup = false
     end
 
     # check the status of the runner and make sure all threads are alive

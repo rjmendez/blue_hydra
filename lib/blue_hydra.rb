@@ -33,7 +33,8 @@ module BlueHydra
   # 1.1.0 CUI, readability refactor, many small improvements
   # 1.1.1 Range monitoring based on TX power, OSS cleanup
   # 1.1.2 Add pulse reset
-  VERSION = '1.1.2'
+  # 1.2.0 drop status sync, restart will use a reset message to reset statuses if we miss both the original message and the daily changed syncs
+  VERSION = '1.2.0'
 
   # Config file located in /opt/pwnix/pwnix-config/blue_hydra.yml on sensors
   # or in the local directory if run on a non-Pwnie device.
@@ -55,15 +56,17 @@ module BlueHydra
   #
   # Note: "file" can also be set but has no default value
   DEFAULT_CONFIG = {
-    "log_level" =>         "info",
-    "bt_device" =>         "hci0",       # change for external ud100
-    "info_scan_rate" =>    60,           # 1 minute in seconds
-    "status_sync_rate" =>  60 * 60 * 24, # 1 day in seconds
-    "btmon_log" =>         false,        # if set will write used btmon output to a log file
-    "btmon_rawlog" =>      false,        # if set will write raw btmon output to a log file
-    "file" =>              false,        # if set will read from file, not hci dev
-    "rssi_log" =>          false,        # if set will log rssi
-    "aggressive_rssi" =>   false         # if set will sync all rssi to pulse
+    "log_level"          => "info",
+    "bt_device"          => "hci0",       # change for external ud100
+    "info_scan_rate"     => 60,           # 1 minute in seconds
+    "btmon_log"          => false,        # if set will write used btmon output to a log file
+    "btmon_rawlog"       => false,        # if set will write raw btmon output to a log file
+    "file"               => false,        # if set will read from file, not hci dev
+    "rssi_log"           => false,        # if set will log rssi
+    "aggressive_rssi"    => false,        # if set will sync all rssi to pulse
+    "ui_filter_mode"     => :disabled,    # default ui filter mode to start in
+    "ui_inc_filter_mac"  => [],           # inclusive ui filter by mac
+    "ui_inc_filter_prox" => []            # inclusive ui filter by prox uuid / major /minor
   }
 
   if File.exists?(LEGACY_CONFIG_FILE)
@@ -110,26 +113,35 @@ module BlueHydra
     def formatter=(fm); end
   end
 
-  # set log level from config
-  @@logger = if @@config["log_level"]
-               Logger.new(LOGFILE)
-             else
-               NilLogger.new
-             end
-  @@logger.level = case @@config["log_level"]
-                   when "fatal"
-                     Logger::FATAL
-                   when "error"
-                     Logger::ERROR
-                   when "warn"
-                     Logger::WARN
-                   when "info"
-                     Logger::INFO
-                   when "debug"
-                     Logger::DEBUG
-                   else
-                     Logger::INFO
-                   end
+  def self.initialize_logger
+    # set log level from config
+    @@logger = if @@config["log_level"]
+                 Logger.new(LOGFILE)
+               else
+                 NilLogger.new
+               end
+    @@logger.level = Logger::DEBUG
+  end
+
+  def self.update_logger
+    @@logger.level = case @@config["log_level"]
+                     when "fatal"
+                       Logger::FATAL
+                     when "error"
+                       Logger::ERROR
+                     when "warn"
+                       Logger::WARN
+                     when "info"
+                       Logger::INFO
+                     when "debug"
+                       Logger::DEBUG
+                     else
+                       Logger::INFO
+                     end
+  end
+
+  initialize_logger
+  update_logger
 
   # the RSSI log will only get used if the appropriate config value is set
   #
@@ -206,10 +218,17 @@ module BlueHydra
     @@pulse_debug = setting
   end
 
+  def no_db
+    @@no_db ||= false
+  end
+
+  def no_db=(setting)
+    @@no_db = setting
+  end
 
   module_function :logger, :config, :daemon_mode, :daemon_mode=, :pulse,
                   :pulse=, :rssi_logger, :demo_mode, :demo_mode=,
-                  :pulse_debug, :pulse_debug=
+                  :pulse_debug, :pulse_debug=, :no_db, :no_db=
 end
 
 # require the actual code
@@ -242,6 +261,12 @@ rescue
     puts "Failed to find mac address for #{BlueHydra.config["bt_device"]}, faking for tests"
   else
     msg = "Unable to read the mac address from #{BlueHydra.config["bt_device"]}"
+    BlueHydra::Pulse.send_event("blue_hydra",
+    {key:'blue_hydra_bt_device_mac_read_error',
+    title:"Blue Hydra cant read mac from BT device #{BlueHydra.config["bt_device"]}",
+    message:msg,
+    severity:'FATAL'
+    })
     BlueHydra.logger.error(msg)
     puts msg unless BlueHydra.daemon_mode
     exit 1
@@ -274,7 +299,7 @@ end
 #
 # When running the rspec tets the BLUE_HYDRA environmental value will be set to
 # 'test' and all tests should run with an in-memory db.
-db_path = if ENV["BLUE_HYDRA"] == "test" || OPTIONS[:no_db]
+db_path = if ENV["BLUE_HYDRA"] == "test" || BlueHydra.no_db
             'sqlite::memory:?cache=shared'
           elsif Dir.exist?(DB_DIR)
             "sqlite:#{DB_PATH}"
@@ -295,8 +320,13 @@ begin
     # file and then create a new db to proceed.
     db_file = Dir.exist?('/opt/pwnix/data/blue_hydra/') ?  "/opt/pwnix/data/blue_hydra/blue_hydra.db" : "blue_hydra.db"
     BlueHydra.logger.error("#{db_file} is not valid. Backing up to #{db_file}.corrupt and recreating...")
+    BlueHydra::Pulse.send_event("blue_hydra",
+    {key:'blue_hydra_db_corrupt',
+    title:"Blue Hydra DB Corrupt",
+    message:"#{db_file} is not valid. Backing up to #{db_file}.corrupt and recreating...",
+    severity:'ERROR'
+    })
     File.rename(db_file, "#{db_file}.corrupt")   #=> 0
-
     DataMapper.auto_upgrade!
   end
 
@@ -309,9 +339,17 @@ begin
   DataMapper.repository.adapter.select('PRAGMA journal_mode = MEMORY')
 rescue => e
   BlueHydra.logger.error("#{e.class}: #{e.message}")
+  log_message = ""
   e.backtrace.each do |line|
     BlueHydra.logger.error(line)
+    log_message << line
   end
+  BlueHydra::Pulse.send_event("blue_hydra",
+  {key:'blue_hydra_db_error',
+  title:"Blue Hydra Encountered DB Migration Error",
+  message:log_message,
+  severity:'FATAL'
+  })
   exit 1
 end
 
