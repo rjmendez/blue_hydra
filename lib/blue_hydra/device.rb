@@ -165,11 +165,36 @@ class BlueHydra::Device
     end
     # Make sure we arent starting off with nil values
     location = Hash.new
-      location["lat"] = 0.0
-      location["lon"] = 0.0
-      location["time"] = "time"
-      location["speed"] = 0.0
+      if location["lat"].nil?
+       location["lat"] = 0.0
+      else
+       location["lat"] = location["lat"]
+      end
+#
+      if location["lon"].nil?
+       location["lon"] = 0.0
+      else
+       location["lon"] = location["lon"]
+      end
+#
+      if location["time"].nil?
+       location["time"] = "time"
+      else
+       location["time"] = location["time"]
+      end
+#
+      if location["speed"].nil?
+       location["speed"] = 0.0
+      else
+       location["speed"] = location["speed"]
+      end
+#
+      if location["altitude"].nil?
       location["altitude"] = 0.0
+      else
+       location["altitude"] = location["altitude"]
+      end
+#
 
       lat = location[:lat]
       lon = location[:lon]
