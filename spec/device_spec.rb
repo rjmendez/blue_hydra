@@ -44,6 +44,7 @@ describe BlueHydra::Device do
       time
       speed
       altitude
+      location
       uuid
     }.each do |attr|
       expect(device.respond_to?(attr)).to eq(true)
